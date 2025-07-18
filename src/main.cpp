@@ -1,6 +1,9 @@
 #include <Arduino.h>
 
 #include "TaskBlink.h"
+#include "TaskButtonInput.h"
+#include "TaskIRReceive.h"
+#include "TaskIRSender.h"
 #include "TaskLogger.h"
 
 void setup() {
@@ -10,7 +13,10 @@ void setup() {
     }
     Serial.println("He thong bat dau .... ");
     TaskBlink_Start();
-    TaskLogger_Start();
+    // TaskLogger_Start();
+    TaskIRReceive_Start();
+    // TaskIRSender_Start();
+    // TaskButtonInput_Start();
 }
 
 void loop() {
