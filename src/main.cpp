@@ -2,9 +2,11 @@
 
 #include "TaskBlink.h"
 #include "TaskButtonInput.h"
+#include "TaskCLI.h"  // 🆕
 #include "TaskIRReceive.h"
 #include "TaskIRSender.h"
 #include "TaskLogger.h"
+#include "TaskWiFi.h"
 
 void setup() {
     // put your setup code here, to run once:
@@ -12,6 +14,8 @@ void setup() {
     while (!Serial) {
     }
     Serial.println("He thong bat dau .... ");
+    TaskWiFi_Start();
+    TaskCLI_Start();  // 🆕
     TaskBlink_Start();
     // TaskLogger_Start();
     TaskIRReceive_Start();
@@ -21,4 +25,5 @@ void setup() {
 
 void loop() {
     // put your main code here, to run repeatedly:
+    TaskCLI_Handle();  // 🆕 đọc & xử lý lệnh CLI
 }
