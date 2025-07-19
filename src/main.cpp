@@ -6,6 +6,7 @@
 #include "TaskIRReceive.h"
 #include "TaskIRSender.h"
 #include "TaskLogger.h"
+#include "TaskNetTool.h"
 #include "TaskWiFi.h"
 
 void setup() {
@@ -17,6 +18,7 @@ void setup() {
     TaskWiFi_Start();
     TaskCLI_Start();  // 🆕
     TaskBlink_Start();
+    TaskNetTool_Start();
     // TaskLogger_Start();
     TaskIRReceive_Start();
     // TaskIRSender_Start();

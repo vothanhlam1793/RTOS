@@ -3,14 +3,23 @@
 #include <Arduino.h>
 #include <WiFi.h>
 
+#include <cstring>  // for memcmp
 #include <map>
 #include <vector>
 
-namespace {
-// ===== Cấu hình =====
-constexpr size_t BUF_SIZE = 128;  // Độ dài tối đa của chuỗi lệnh
-char cmdBuf[BUF_SIZE];
+constexpr size_t CLI_BUF_SIZE = 128;
+constexpr size_t HISTORY_DEPTH = 5;
+
+char cmdBuf[CLI_BUF_SIZE];
 size_t cmdLen = 0;
+
+char history[HISTORY_DEPTH][CLI_BUF_SIZE];
+int historyCount = 0;
+int historyIndex = -1;
+
+bool escSeq = false;
+char escBuf[3];
+int escIdx = 0;
 
 struct CmdEntry {
     const char* help;
@@ -77,7 +86,7 @@ void dispatch(const String& line) {
     it->second.cb(args);  // Gọi callback của task
 }
 
-}  // namespace
+// }  // namespace
 
 // ===== API công khai =====
 bool CLI_RegisterCommand(const char* name, const char* help, CliCallback cb) {
@@ -96,52 +105,87 @@ void TaskCLI_Start() {
 
     Serial.println(F("🖥️  CLI sẵn sàng – gõ 'help' để xem lệnh."));
 }
-
-// void TaskCLI_Handle() {
-//     while (Serial.available()) {
-//         char c = Serial.read();
-//         if (c == '\r' || c == '\n') {
-//             if (cmdLen) {
-//                 cmdBuf[cmdLen] = '\0';
-//                 dispatch(String(cmdBuf));
-//                 cmdLen = 0;
-//             }
-//         } else if (cmdLen < BUF_SIZE - 1) {
-//             cmdBuf[cmdLen++] = c;
-//         }
-//     }
-// }
-
 void TaskCLI_Handle() {
     while (Serial.available()) {
         char c = Serial.read();
 
-        // ---- Xử lý xuống dòng ----
+        // --- Đọc chuỗi ESC ---
+        if (escSeq) {
+            escBuf[escIdx++] = c;
+            if (escIdx == 2) {
+                if (escBuf[0] == '[') {
+                    if (escBuf[1] == 'A') {
+                        // ↑ recall lệnh cũ
+                        if (historyCount > 0 && historyIndex > 0) {
+                            historyIndex--;
+                            strncpy(cmdBuf, history[historyIndex % HISTORY_DEPTH], CLI_BUF_SIZE);
+                            cmdLen = strlen(cmdBuf);
+                            Serial.print("\r> ");
+                            Serial.print(cmdBuf);
+                            Serial.print(" \b");
+                        }
+                    } else if (escBuf[1] == 'B') {
+                        // ↓ recall lệnh mới
+                        if (historyCount > 0 && historyIndex < historyCount - 1) {
+                            historyIndex++;
+                            strncpy(cmdBuf, history[historyIndex % HISTORY_DEPTH], CLI_BUF_SIZE);
+                            cmdLen = strlen(cmdBuf);
+                            Serial.print("\r> ");
+                            Serial.print(cmdBuf);
+                            Serial.print(" \b");
+                        } else {
+                            historyIndex = historyCount;
+                            cmdLen = 0;
+                            cmdBuf[0] = '\0';
+                            Serial.print("\r> ");
+                        }
+                    }
+                }
+                escSeq = false;
+                escIdx = 0;
+            }
+            continue;
+        }
+
+        if (c == 0x1B) {  // ESC
+            escSeq = true;
+            escIdx = 0;
+            continue;
+        }
+
+        // --- Xuống dòng ---
         if (c == '\r' || c == '\n') {
-            Serial.println();  // echo newline
-            if (cmdLen) {
-                cmdBuf[cmdLen] = 0;
+            Serial.println();
+            if (cmdLen > 0) {
+                cmdBuf[cmdLen] = '\0';
                 dispatch(String(cmdBuf));
+                strncpy(history[historyCount % HISTORY_DEPTH], cmdBuf, CLI_BUF_SIZE);
+                historyCount++;
+                historyIndex = historyCount;
                 cmdLen = 0;
             }
-            vTaskDelay(100 / portTICK_PERIOD_MS);
-            Serial.print("> ");  // prompt lại
+            Serial.print("> ");
             continue;
         }
 
-        // ---- Xử lý Backspace ----
-        if (c == 0x08 || c == 0x7F) {  // BS hoặc DEL
+        // --- Backspace ---
+        if (c == 0x08 || c == 0x7F) {
             if (cmdLen > 0) {
                 cmdLen--;
-                Serial.print("\b \b");  // xóa trên terminal
+                Serial.print("\b \b");
             }
             continue;
         }
 
-        // ---- Lưu & echo ký tự bình thường ----
-        if (cmdLen < BUF_SIZE - 1) {
-            cmdBuf[cmdLen++] = c;
-            Serial.write(c);  // echo lại
+        // --- Thêm ký tự hợp lệ ---
+        if (cmdLen < CLI_BUF_SIZE - 1) {
+            if (c >= 32 && c <= 126) {  // ASCII printable
+                cmdBuf[cmdLen++] = c;
+                Serial.write(c);
+            } else {
+                // Uncomment để debug ký tự lạ:
+                // Serial.printf("\n⚠️ Bỏ qua ký tự không hợp lệ: 0x%02X\n> %s", (uint8_t)c, cmdBuf);
+            }
         }
     }
 }
